@@ -1,8 +1,7 @@
-#include <cstdlib>
-
 #include <cstring>
 
 #include <set>
+#include <array>
 #include <vector>
 #include <limits>
 #include <fstream>
@@ -13,8 +12,7 @@
 #include <GLFW/glfw3.h>
 
 #include "vdeleter.h"
-
-#define __d() std::cout << "debug line " << __LINE__ << '\n'
+#include "vertex.h"
 
 struct QueueFamilyIndices {
 	int graphicsFamily = -1;
@@ -29,6 +27,16 @@ struct SwapChainSupportDetails {
 	VkSurfaceCapabilitiesKHR capabilities;
 	std::vector<VkSurfaceFormatKHR> formats;
 	std::vector<VkPresentModeKHR> presentModes;
+};
+
+const std::vector<Vertex> vertices {
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{ 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+
+	{{-0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{ 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{ 0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}},
 };
 
 class HelloTriangleApplication {
@@ -58,6 +66,8 @@ private:
 	VDeleter<VkCommandPool> commandPool { device, vkDestroyCommandPool };
 	VDeleter<VkSemaphore> imageAvailableSemaphore { device, vkDestroySemaphore };
 	VDeleter<VkSemaphore> renderFinishedSemaphore { device, vkDestroySemaphore };
+	VDeleter<VkBuffer> vertexBuffer { device, vkDestroyBuffer };
+	VDeleter<VkDeviceMemory> vertexBufferMemory { device, vkFreeMemory };
 
 	std::vector<VDeleter<VkImageView>> swapChainImageViews;
 	std::vector<VDeleter<VkFramebuffer>> swapChainFramebuffers;
@@ -84,9 +94,11 @@ private:
 		glfwInit();
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 		window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+
+		glfwSetWindowUserPointer(window, this);
+		glfwSetWindowSizeCallback(window, HelloTriangleApplication::onWindowResized);
 	}
 
 	void initVulkan() {
@@ -101,6 +113,7 @@ private:
 		createGraphicsPipeline();
 		createFramebuffers();
 		createCommandPool();
+		createVertexBuffer();
 		createCommandBuffers();
 		createSemaphores();
 	}
@@ -121,7 +134,14 @@ private:
 
 	void drawFrame() {
 		uint32_t imageIndex;
-		vkAcquireNextImageKHR(device, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+		VkResult result = vkAcquireNextImageKHR(device, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+			recreateSwapChain();
+			return;
+		} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+			throw std::runtime_error("failed to acquire swap chain image!");
+		}
 
 		VkSubmitInfo submitInfo {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -153,7 +173,24 @@ private:
 		presentInfo.pImageIndices = &imageIndex;
 		presentInfo.pResults = nullptr;
 
-		vkQueuePresentKHR(presentQueue, &presentInfo);
+		result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+			recreateSwapChain();
+		} else if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed to present swap chain image!");
+		}
+	}
+
+	void recreateSwapChain() {
+		vkDeviceWaitIdle(device);
+
+		createSwapChain();
+		createImageViews();
+		createRenderPass();
+		createGraphicsPipeline();
+		createFramebuffers();
+		createCommandBuffers();
 	}
 
 	void createInstance() {
@@ -453,11 +490,16 @@ private:
 		createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 		createInfo.presentMode = presentMode;
 		createInfo.clipped = VK_TRUE;
-		createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-		if (vkCreateSwapchainKHR(device, &createInfo, nullptr, swapChain.replace()) != VK_SUCCESS) {
+		VkSwapchainKHR oldSwapChain = swapChain;
+		createInfo.oldSwapchain = oldSwapChain;
+
+		VkSwapchainKHR newSwapChain;
+		if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &newSwapChain) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create swap chain!");
 		}
+
+		swapChain = newSwapChain;
 
 		swapChainImageFormat = surfaceFormat.format;
 		swapChainExtent = extent;
@@ -499,7 +541,10 @@ private:
 		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
 			return capabilities.currentExtent;
 		} else {
-			VkExtent2D actualExtent { WIDTH, HEIGHT };
+			int width, height;
+			glfwGetWindowSize(window, &width, &height);
+
+			VkExtent2D actualExtent { (uint32_t) width, (uint32_t) height };
 
 			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
 			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -602,10 +647,14 @@ private:
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo {};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertexInputInfo.vertexBindingDescriptionCount = 0;
-		vertexInputInfo.pVertexBindingDescriptions = nullptr;
-		vertexInputInfo.vertexAttributeDescriptionCount = 0;
-		vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+		auto bindingDescription = Vertex::getBindingDescription();
+		auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size();
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 		VkPipelineInputAssemblyStateCreateInfo inputAssembly {};
 		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -758,7 +807,55 @@ private:
 		}
 	}
 
+	void createVertexBuffer() {
+		VkBufferCreateInfo bufferInfo {};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (vkCreateBuffer(device, &bufferInfo, nullptr, vertexBuffer.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create vertex buffer!");
+		}
+
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+		if (vkAllocateMemory(device, &allocInfo, nullptr, vertexBufferMemory.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate vertex buffer memory!");
+		}
+
+		vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+		void* data;
+		vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+		memcpy(data, vertices.data(), (size_t) bufferInfo.size);
+		vkUnmapMemory(device, vertexBufferMemory);
+	}
+
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+		VkPhysicalDeviceMemoryProperties memProperties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+		
+		for (uint32_t i=0; i<memProperties.memoryTypeCount; ++i) {
+			if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+				return i;
+			}
+		}
+
+		throw std::runtime_error("failed to find suitable memory type!");
+	}
+
 	void createCommandBuffers() {
+		if (commandBuffers.size() > 0) {
+			vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
+		}
+
 		commandBuffers.resize(swapChainFramebuffers.size());
 
 		VkCommandBufferAllocateInfo allocInfo {};
@@ -795,7 +892,11 @@ private:
 
 			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-			vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+			VkBuffer vertexBuffers[] { vertexBuffer };
+			VkDeviceSize offsets[] { 0 };
+			vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+
+			vkCmdDraw(commandBuffers[i], vertices.size(), 1, 0, 0);
 
 			vkCmdEndRenderPass(commandBuffers[i]);
 
@@ -863,6 +964,13 @@ private:
 		file.close();
 
 		return buffer;
+	}
+
+	static void onWindowResized(GLFWwindow* window, int width, int height) {
+		if (width <= 0 || height <= 0) return;
+
+		HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+		app->recreateSwapChain();
 	}
 };
 
