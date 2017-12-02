@@ -76,7 +76,9 @@ struct Object {
 	VkDescriptorSet descriptorSet;
 	VkBuffer uniformBuffer;
 	VkDeviceMemory uniformBufferMemory;
-	UniformBufferObject ubo;
+
+	glm::mat4 modelMatrix;
+
 	uint32_t indexCount;
 	uint32_t firstIndex;
 };
@@ -202,34 +204,23 @@ private:
 	void mainLoop() {
 		static auto startTime = std::chrono::high_resolution_clock::now();
 
+		UniformBufferObject ubo;
+		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+		ubo.proj[1][1] *= -1;
+		updateUniformBuffers(ubo);
+
 		while (!glfwWindowShouldClose(window)) {
 			auto currentTime = std::chrono::high_resolution_clock::now();
 			float time = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() / 1000.0f;
 
-			UniformBufferObject ubo1 {};
-			ubo1.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-			ubo1.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-			ubo1.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-			ubo1.proj[1][1] *= -1;
-
-			UniformBufferObject ubo2 {};
-			ubo2.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-			ubo2.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-			ubo2.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-			ubo2.proj[1][1] *= -1;
-
-			UniformBufferObject ubo3 {};
-			ubo3.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-			ubo3.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-			ubo3.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-			ubo3.proj[1][1] *= -1;
-
 			glfwPollEvents();
 
-			objects[0].ubo = ubo1;
-			objects[1].ubo = ubo2;
-			objects[2].ubo = ubo3;
-			updateUniformBuffers();
+			objects[0].modelMatrix = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			objects[1].modelMatrix = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+			objects[2].modelMatrix = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+			updateModelMatrix();
 			drawFrame();
 		}
 
@@ -1268,11 +1259,20 @@ private:
 		}
 	}
 
-	void updateUniformBuffers() {
+	void updateUniformBuffers(const UniformBufferObject& ubo) {
 		for (const Object& obj : objects) {
 			void* data;
-			vkMapMemory(device, obj.uniformBufferMemory, 0, sizeof(obj.ubo), 0, &data);
-				memcpy(data, &obj.ubo, sizeof(obj.ubo));
+			vkMapMemory(device, obj.uniformBufferMemory, 0, sizeof(UniformBufferObject), 0, &data);
+				memcpy(data, &ubo, sizeof(UniformBufferObject));
+			vkUnmapMemory(device, obj.uniformBufferMemory);
+		}
+	}
+
+	void updateModelMatrix() {
+		for (const Object& obj : objects) {
+			void* data;
+			vkMapMemory(device, obj.uniformBufferMemory, 0, sizeof(obj.modelMatrix), 0, &data);
+				memcpy(data, &obj.modelMatrix, sizeof(obj.modelMatrix));
 			vkUnmapMemory(device, obj.uniformBufferMemory);
 		}
 	}
