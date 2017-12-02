@@ -71,6 +71,16 @@ struct SwapChainSupportDetails {
 	std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct Object {
+	VkDescriptorSetLayout descriptorSetLayout;
+	VkDescriptorSet descriptorSet;
+	VkBuffer uniformBuffer;
+	VkDeviceMemory uniformBufferMemory;
+	UniformBufferObject ubo;
+	uint32_t indexCount;
+	uint32_t firstIndex;
+};
+
 class SpaceInvaders {
 public:
 	void run() {
@@ -101,7 +111,6 @@ private:
 	std::vector<VkFramebuffer> swapChainFramebuffers;
 
 	VkRenderPass renderPass;
-	VkDescriptorSetLayout descriptorSetLayout;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
@@ -117,11 +126,8 @@ private:
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
-	VkBuffer uniformBuffer;
-	VkDeviceMemory uniformBufferMemory;
-
 	VkDescriptorPool descriptorPool;
-	VkDescriptorSet descriptorSet;
+	std::vector<Object> objects;
 
 	std::vector<VkCommandBuffer> commandBuffers;
 
@@ -147,6 +153,14 @@ private:
 	}
 
 	void initVulkan() {
+		objects.resize(3);
+		objects[0].indexCount = 6;
+		objects[0].firstIndex = 0;
+		objects[1].indexCount = 6;
+		objects[1].firstIndex = 0;
+		objects[2].indexCount = 6;
+		objects[2].firstIndex = 0;
+
 		createInstance();
 		setupDebugCallback();
 		createSurface();
@@ -155,7 +169,11 @@ private:
 		createSwapChain();
 		createImageViews();
 		createRenderPass();
-		createDescriptorSetLayout();
+
+		for (Object& obj : objects) {
+			createDescriptorSetLayout(obj);
+		}
+
 		createGraphicsPipeline();
 		createCommandPool();
 		createDepthResources();
@@ -166,18 +184,52 @@ private:
 		loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
-		createUniformBuffer();
+
+		for (Object& obj : objects) {
+			createUniformBuffer(obj);
+		}
+
 		createDescriptorPool();
-		createDescriptorSet();
+
+		for (Object& obj : objects) {
+			createDescriptorSet(obj);
+		}
+
 		createCommandBuffers();
 		createSemaphores();
 	}
 
 	void mainLoop() {
+		static auto startTime = std::chrono::high_resolution_clock::now();
+
 		while (!glfwWindowShouldClose(window)) {
+			auto currentTime = std::chrono::high_resolution_clock::now();
+			float time = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() / 1000.0f;
+
+			UniformBufferObject ubo1 {};
+			ubo1.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo1.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo1.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+			ubo1.proj[1][1] *= -1;
+
+			UniformBufferObject ubo2 {};
+			ubo2.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+			ubo2.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo2.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+			ubo2.proj[1][1] *= -1;
+
+			UniformBufferObject ubo3 {};
+			ubo3.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+			ubo3.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo3.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+			ubo3.proj[1][1] *= -1;
+
 			glfwPollEvents();
 
-			updateUniformBuffer();
+			objects[0].ubo = ubo1;
+			objects[1].ubo = ubo2;
+			objects[2].ubo = ubo3;
+			updateUniformBuffers();
 			drawFrame();
 		}
 
@@ -217,9 +269,11 @@ private:
 
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
-		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-		vkDestroyBuffer(device, uniformBuffer, nullptr);
-		vkFreeMemory(device, uniformBufferMemory, nullptr);
+		for (const Object& obj : objects) {
+			vkDestroyDescriptorSetLayout(device, obj.descriptorSetLayout, nullptr);
+			vkDestroyBuffer(device, obj.uniformBuffer, nullptr);
+			vkFreeMemory(device, obj.uniformBufferMemory, nullptr);
+		}
 
 		vkDestroyBuffer(device, indexBuffer, nullptr);
 		vkFreeMemory(device, indexBufferMemory, nullptr);
@@ -524,7 +578,7 @@ private:
 		}
 	}
 
-	void createDescriptorSetLayout() {
+	void createDescriptorSetLayout(Object& obj) {
 		VkDescriptorSetLayoutBinding uboLayoutBinding {};
 		uboLayoutBinding.binding = 0;
 		uboLayoutBinding.descriptorCount = 1;
@@ -546,7 +600,7 @@ private:
 		layoutInfo.bindingCount = (uint32_t) bindings.size();
 		layoutInfo.pBindings = bindings.data();
 
-		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &obj.descriptorSetLayout) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptor set layout!");
 		}
 	}
@@ -637,10 +691,16 @@ private:
 		colorBlending.blendConstants[2] = 0.0f;
 		colorBlending.blendConstants[3] = 0.0f;
 
+		std::vector<VkDescriptorSetLayout> setLayouts;
+
+		for (const Object& obj : objects) {
+			setLayouts.push_back(obj.descriptorSetLayout);
+		}
+
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+		pipelineLayoutInfo.setLayoutCount = (uint32_t) setLayouts.size();
+		pipelineLayoutInfo.pSetLayouts = setLayouts.data();
 
 		if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create pipeline layout!");
@@ -902,42 +962,54 @@ private:
 	}
 
 	void loadModel() {
-		tinyobj::attrib_t attrib;
-		std::vector<tinyobj::shape_t> shapes;
-		std::vector<tinyobj::material_t> materials;
-		std::string err;
+		vertices = {
+			{{ -0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f }, {0.0f, 0.0f }},
+			{{  0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f }, {1.0f, 0.0f }},
+			{{  0.5f,  0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f }, {1.0f, 1.0f }},
+			{{ -0.5f,  0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f }, {0.0f, 1.0f }}
+		};
 
-		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
-			throw std::runtime_error(err);
-		}
+		indices = {
+			0, 1, 2,
+			2, 3, 0
+		};
 
-		std::unordered_map<Vertex, uint32_t> uniqueVertices {};
+		// tinyobj::attrib_t attrib;
+		// std::vector<tinyobj::shape_t> shapes;
+		// std::vector<tinyobj::material_t> materials;
+		// std::string err;
 
-		for (const auto& shape : shapes) {
-			for (const auto& index : shape.mesh.indices) {
-				Vertex vertex {};
+		// if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
+		// 	throw std::runtime_error(err);
+		// }
 
-				vertex.pos = {
-					attrib.vertices[3 * index.vertex_index + 0],
-					attrib.vertices[3 * index.vertex_index + 1],
-					attrib.vertices[3 * index.vertex_index + 2]
-				};
+		// std::unordered_map<Vertex, uint32_t> uniqueVertices {};
 
-				vertex.texCoord = {
-					attrib.texcoords[2 * index.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-				};
+		// for (const auto& shape : shapes) {
+		// 	for (const auto& index : shape.mesh.indices) {
+		// 		Vertex vertex {};
 
-				vertex.color = { 1.0f, 1.0f, 1.0f };
+		// 		vertex.pos = {
+		// 			attrib.vertices[3 * index.vertex_index + 0],
+		// 			attrib.vertices[3 * index.vertex_index + 1],
+		// 			attrib.vertices[3 * index.vertex_index + 2]
+		// 		};
 
-				if (uniqueVertices.count(vertex) == 0) {
-					uniqueVertices[vertex] = (uint32_t) vertices.size();
-					vertices.push_back(vertex);
-				}
+		// 		vertex.texCoord = {
+		// 			attrib.texcoords[2 * index.texcoord_index + 0],
+		// 			1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+		// 		};
 
-				indices.push_back(uniqueVertices[vertex]);
-			}
-		}
+		// 		vertex.color = { 1.0f, 1.0f, 1.0f };
+
+		// 		if (uniqueVertices.count(vertex) == 0) {
+		// 			uniqueVertices[vertex] = (uint32_t) vertices.size();
+		// 			vertices.push_back(vertex);
+		// 		}
+
+		// 		indices.push_back(uniqueVertices[vertex]);
+		// 	}
+		// }
 	}
 
 	void createVertexBuffer() {
@@ -980,43 +1052,43 @@ private:
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
 	}
 
-	void createUniformBuffer() {
+	void createUniformBuffer(Object& obj) {
 		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffer, uniformBufferMemory);
+		createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, obj.uniformBuffer, obj.uniformBufferMemory);
 	}
 
 	void createDescriptorPool() {
 		std::array<VkDescriptorPoolSize, 2> poolSizes {};
 		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSizes[0].descriptorCount = 1;
+		poolSizes[0].descriptorCount = objects.size();
 		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		poolSizes[1].descriptorCount = 1;
+		poolSizes[1].descriptorCount = objects.size();
 
 		VkDescriptorPoolCreateInfo poolInfo {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.poolSizeCount = (uint32_t) poolSizes.size();
 		poolInfo.pPoolSizes = poolSizes.data();
-		poolInfo.maxSets = 1;
+		poolInfo.maxSets = objects.size();
 
 		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptor pool!");
 		}
 	}
 
-	void createDescriptorSet() {
-		VkDescriptorSetLayout layouts[] { descriptorSetLayout };
+	void createDescriptorSet(Object& obj) {
+		VkDescriptorSetLayout layouts[] { obj.descriptorSetLayout };
 		VkDescriptorSetAllocateInfo allocInfo {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		allocInfo.descriptorPool = descriptorPool;
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = layouts;
 
-		if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+		if (vkAllocateDescriptorSets(device, &allocInfo, &obj.descriptorSet) != VK_SUCCESS) {
 			throw std::runtime_error("failed to allocate descriptor set!");
 		}
 
 		VkDescriptorBufferInfo bufferInfo {};
-		bufferInfo.buffer = uniformBuffer;
+		bufferInfo.buffer = obj.uniformBuffer;
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(UniformBufferObject);
 
@@ -1028,7 +1100,7 @@ private:
 		std::array<VkWriteDescriptorSet, 2> descriptorWrites {};
 
 		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[0].dstSet = descriptorSet;
+		descriptorWrites[0].dstSet = obj.descriptorSet;
 		descriptorWrites[0].dstBinding = 0;
 		descriptorWrites[0].dstArrayElement = 0;
 		descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1036,7 +1108,7 @@ private:
 		descriptorWrites[0].pBufferInfo = &bufferInfo;
 
 		descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[1].dstSet = descriptorSet;
+		descriptorWrites[1].dstSet = obj.descriptorSet;
 		descriptorWrites[1].dstBinding = 1;
 		descriptorWrites[1].dstArrayElement = 0;
 		descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1172,9 +1244,10 @@ private:
 
 				vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-				vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-
-				vkCmdDrawIndexed(commandBuffers[i], (uint32_t) indices.size(), 1, 0, 0, 0);
+				for (const Object& obj : objects) {
+					vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &obj.descriptorSet, 0, nullptr);
+					vkCmdDrawIndexed(commandBuffers[i], obj.indexCount, 1, obj.firstIndex, 0, 0);
+				}
 
 			vkCmdEndRenderPass(commandBuffers[i]);
 
@@ -1195,22 +1268,13 @@ private:
 		}
 	}
 
-	void updateUniformBuffer() {
-		static auto startTime = std::chrono::high_resolution_clock::now();
-
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() / 1000.0f;
-
-		UniformBufferObject ubo {};
-		ubo.model = glm::rotate(glm::mat4(), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
-
-		void* data;
-		vkMapMemory(device, uniformBufferMemory, 0, sizeof(ubo), 0, &data);
-			memcpy(data, &ubo, sizeof(ubo));
-		vkUnmapMemory(device, uniformBufferMemory);
+	void updateUniformBuffers() {
+		for (const Object& obj : objects) {
+			void* data;
+			vkMapMemory(device, obj.uniformBufferMemory, 0, sizeof(obj.ubo), 0, &data);
+				memcpy(data, &obj.ubo, sizeof(obj.ubo));
+			vkUnmapMemory(device, obj.uniformBufferMemory);
+		}
 	}
 
 	void drawFrame() {
