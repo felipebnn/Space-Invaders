@@ -5,7 +5,7 @@
 
 OUTPUT_FILE := main
 ATTR_ALL := -MMD -Wall
-ATTR_GPP := -O3 -std=c++11
+ATTR_GPP := -O3 -std=c++14
 ATTR_OUT := -lglfw -lvulkan
 ATTR_GCC :=
 

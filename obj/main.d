@@ -1,2 +1,2 @@
-obj/main.o: src/main.cpp include/stb_image.h include/tiny_obj_loader.h \
- include/vertex.h include/ubo.h
+obj/main.o: src/main.cpp include/engine.h include/vertex.h \
+ include/model.h include/ubo.h
