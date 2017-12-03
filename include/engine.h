@@ -75,6 +75,7 @@ protected:
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
+	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorPool descriptorPool;
 	std::vector<Model> models;
 
@@ -105,7 +106,7 @@ protected:
 	void createImageViews();
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 	void createRenderPass();
-	void createDescriptorSetLayout(Model& model);
+	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
 	void createFramebuffers();
 	void createCommandPool();
@@ -148,12 +149,14 @@ protected:
 	virtual void setup() {};
 	virtual void loadModel() = 0;
 	virtual void tick(double duration) {};
+	virtual void updateCamera() {};
 
 	static void onWindowResized(GLFWwindow* window, int width, int height) {
 		if (width == 0 || height == 0) return;
 
 		Engine* app = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
 		app->recreateSwapChain();
+		app->updateCamera();
 	}
 
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType, uint64_t obj, size_t location, int32_t code, const char* layerPrefix, const char* msg, void* userData) {

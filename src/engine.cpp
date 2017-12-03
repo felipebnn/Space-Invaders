@@ -84,11 +84,7 @@ void Engine::initVulkan() {
 	createSwapChain();
 	createImageViews();
 	createRenderPass();
-
-	for (Model& model : models) {
-		createDescriptorSetLayout(model);
-	}
-
+	createDescriptorSetLayout();
 	createGraphicsPipeline();
 	createCommandPool();
 	createDepthResources();
@@ -98,14 +94,10 @@ void Engine::initVulkan() {
 	createTextureSampler();
 	createVertexBuffer();
 	createIndexBuffer();
-
+	createDescriptorPool();
+	
 	for (Model& model : models) {
 		createUniformBuffer(model);
-	}
-
-	createDescriptorPool();
-
-	for (Model& model : models) {
 		createDescriptorSet(model);
 	}
 
@@ -114,15 +106,18 @@ void Engine::initVulkan() {
 }
 
 void Engine::mainLoop() {
-	while (!glfwWindowShouldClose(window)) {
-		const auto startTime = std::chrono::high_resolution_clock::now();
+	static auto lastTick = std::chrono::high_resolution_clock::now();
 
+	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
+
+		const auto currTime = std::chrono::high_resolution_clock::now();
+		const double duration = std::chrono::duration<double, std::chrono::milliseconds::period>(currTime - lastTick).count();
+		lastTick = currTime;
+		tick(duration);
+
 		drawFrame();
 
-		const auto endTime = std::chrono::high_resolution_clock::now();
-		const double duration = std::chrono::duration<double, std::chrono::milliseconds::period>(endTime - startTime).count();
-		tick(duration);
 	}
 
 	vkDeviceWaitIdle(device);
@@ -133,8 +128,8 @@ void Engine::cleanupSwapChain() {
 	vkDestroyImage(device, depthImage, nullptr);
 	vkFreeMemory(device, depthImageMemory, nullptr);
 
-	for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-		vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+	for (auto framebuffer : swapChainFramebuffers) {
+		vkDestroyFramebuffer(device, framebuffer, nullptr);
 	}
 
 	vkFreeCommandBuffers(device, commandPool, (uint32_t) commandBuffers.size(), commandBuffers.data());
@@ -143,8 +138,8 @@ void Engine::cleanupSwapChain() {
 	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 	vkDestroyRenderPass(device, renderPass, nullptr);
 
-	for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-		vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+	for (auto imageView : swapChainImageViews) {
+		vkDestroyImageView(device, imageView, nullptr);
 	}
 
 	vkDestroySwapchainKHR(device, swapChain, nullptr);
@@ -160,9 +155,9 @@ void Engine::cleanup() {
 	vkFreeMemory(device, textureImageMemory, nullptr);
 
 	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
 	for (const Model& model : models) {
-		vkDestroyDescriptorSetLayout(device, model.descriptorSetLayout, nullptr);
 		vkDestroyBuffer(device, model.uniformBuffer, nullptr);
 		vkFreeMemory(device, model.uniformBufferMemory, nullptr);
 	}
@@ -463,7 +458,7 @@ void Engine::createRenderPass() {
 	}
 }
 
-void Engine::createDescriptorSetLayout(Model& model) {
+void Engine::createDescriptorSetLayout() {
 	VkDescriptorSetLayoutBinding uboLayoutBinding {};
 	uboLayoutBinding.binding = 0;
 	uboLayoutBinding.descriptorCount = 1;
@@ -485,7 +480,7 @@ void Engine::createDescriptorSetLayout(Model& model) {
 	layoutInfo.bindingCount = (uint32_t) bindings.size();
 	layoutInfo.pBindings = bindings.data();
 
-	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &model.descriptorSetLayout) != VK_SUCCESS) {
+	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor set layout!");
 	}
 }
@@ -576,16 +571,10 @@ void Engine::createGraphicsPipeline() {
 	colorBlending.blendConstants[2] = 0.0f;
 	colorBlending.blendConstants[3] = 0.0f;
 
-	std::vector<VkDescriptorSetLayout> setLayouts;
-
-	for (const Model& model : models) {
-		setLayouts.push_back(model.descriptorSetLayout);
-	}
-
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = (uint32_t) setLayouts.size();
-	pipelineLayoutInfo.pSetLayouts = setLayouts.data();
+	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 
 	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create pipeline layout!");
@@ -910,12 +899,11 @@ void Engine::createDescriptorPool() {
 }
 
 void Engine::createDescriptorSet(Model& model) {
-	VkDescriptorSetLayout layouts[] { model.descriptorSetLayout };
 	VkDescriptorSetAllocateInfo allocInfo {};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = descriptorPool;
 	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = layouts;
+	allocInfo.pSetLayouts = &descriptorSetLayout;
 
 	if (vkAllocateDescriptorSets(device, &allocInfo, &model.descriptorSet) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate descriptor set!");
@@ -1103,10 +1091,11 @@ void Engine::createSemaphores() {
 }
 
 void Engine::updateUniformBuffers(const UniformBufferObject& ubo) {
+	constexpr size_t memSize = sizeof(UniformBufferObject) - offsetof(UniformBufferObject, view);
 	for (const Model& model : models) {
 		void* data;
-		vkMapMemory(device, model.uniformBufferMemory, 0, sizeof(UniformBufferObject), 0, &data);
-			memcpy(data, &ubo, sizeof(UniformBufferObject));
+		vkMapMemory(device, model.uniformBufferMemory, offsetof(UniformBufferObject, view), memSize, 0, &data);
+			memcpy(data, &ubo.view, memSize);
 		vkUnmapMemory(device, model.uniformBufferMemory);
 	}
 }
