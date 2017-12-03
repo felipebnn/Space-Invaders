@@ -3,13 +3,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
 static const int WIDTH = 800;
 static const int HEIGHT = 600;
 
-static const std::string TEXTURE_PATH = "textures/texture.jpg";
+static const std::string TEXTURE_PATH = "textures/texture.png";
 
 static const std::vector<const char*> validationLayers { "VK_LAYER_LUNARG_standard_validation" };
 static const std::vector<const char*> deviceExtensions { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
