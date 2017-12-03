@@ -40,7 +40,7 @@ static std::vector<char> readFile(const std::string& filename) {
 	std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
-		throw std::runtime_error("failed to open file " + filename + " !");
+		throw std::runtime_error("failed to open file '" + filename + "'!");
 	}
 
 	size_t fileSize = (size_t) file.tellg();
@@ -115,9 +115,14 @@ void Engine::initVulkan() {
 
 void Engine::mainLoop() {
 	while (!glfwWindowShouldClose(window)) {
+		const auto startTime = std::chrono::high_resolution_clock::now();
+
 		glfwPollEvents();
-		tick();
 		drawFrame();
+
+		const auto endTime = std::chrono::high_resolution_clock::now();
+		const double duration = std::chrono::duration<double, std::chrono::milliseconds::period>(endTime - startTime).count();
+		tick(duration);
 	}
 
 	vkDeviceWaitIdle(device);

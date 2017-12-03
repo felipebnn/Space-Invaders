@@ -147,7 +147,7 @@ protected:
 
 	virtual void setup() {};
 	virtual void loadModel() = 0;
-	virtual void tick() {};
+	virtual void tick(double duration) {};
 
 	static void onWindowResized(GLFWwindow* window, int width, int height) {
 		if (width == 0 || height == 0) return;

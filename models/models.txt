@@ -1,5 +1,45 @@
-2
-> 8 1 1
+3
+
+player 8 0 1
+.......x
+......xxx
+......xxx
+.xxxxxxxxxxxxx
+xxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxx
+
+player_bullet 3 0 1
+x
+x
+x
+
+enemy_bullet 3 2 3
+x
+x
+x
+
+boss 7 1 1
+.....xxxxx
+...xxxxxxxxx
+..xxxxxxxxxxx
+.xx.x.x.x.x.xx
+xxxxxxxxxxxxxxx
+..xxx.xxx.xxx
+...x.......x
+
+enemy_1 8 2 22
+....xxxx
+.xxxxxxxxxx
+xxxxxxxxxxxx
+xxx..xx..xxx
+xxxxxxxxxxxx
+...xx..xx
+..xx.xx.xx
+xx........xx
+
+enemy_2 8 2 22
 ..x.....x
 ...x...x
 ..xxxxxxx
@@ -8,3 +48,13 @@ xxxxxxxxxxx
 x.xxxxxxx.x
 x.x.....x.x
 ...xx.xx
+
+enemy_3 8 2 11
+...xx
+..xxxx
+.xxxxxx
+xx.xx.xx
+xxxxxxxx
+..x..x
+.x.xx.x
+x.x..x.x
