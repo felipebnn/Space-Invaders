@@ -68,6 +68,7 @@ void Engine::initWindow() {
 
 	glfwSetWindowUserPointer(window, this);
 	glfwSetWindowSizeCallback(window, Engine::onWindowResized);
+	glfwSetKeyCallback(window, Engine::onKeyCallback);
 }
 
 void Engine::initVulkan() {
@@ -103,13 +104,13 @@ void Engine::initVulkan() {
 }
 
 void Engine::mainLoop() {
-	static auto lastTick = std::chrono::high_resolution_clock::now();
+	auto lastTick = std::chrono::high_resolution_clock::now();
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
 		const auto currTime = std::chrono::high_resolution_clock::now();
-		const double duration = std::chrono::duration<double, std::chrono::milliseconds::period>(currTime - lastTick).count();
+		const float duration = std::chrono::duration<float, std::chrono::seconds::period>(currTime - lastTick).count();
 		lastTick = currTime;
 		tick(duration);
 
@@ -811,8 +812,8 @@ void Engine::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, u
 void Engine::createTextureSampler() {
 	VkSamplerCreateInfo samplerInfo {};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.magFilter = VK_FILTER_NEAREST;
-	samplerInfo.minFilter = VK_FILTER_NEAREST;
+	samplerInfo.magFilter = VK_FILTER_LINEAR;
+	samplerInfo.minFilter = VK_FILTER_LINEAR;
 	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;

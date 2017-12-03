@@ -148,8 +148,11 @@ protected:
 
 	virtual void setup() {};
 	virtual void loadModel() = 0;
-	virtual void tick(double duration) {};
+	virtual void tick(float duration) {};
 	virtual void updateCamera() {};
+	virtual void onKeyDown(int key, int scancode, int mods) {};
+	virtual void onKeyUp(int key, int scancode, int mods) {};
+	virtual void onKeyRepeat(int key, int scancode, int mods) {};
 
 	static void onWindowResized(GLFWwindow* window, int width, int height) {
 		if (width == 0 || height == 0) return;
@@ -157,6 +160,16 @@ protected:
 		Engine* app = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
 		app->recreateSwapChain();
 		app->updateCamera();
+	}
+
+	static void onKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+		Engine* app = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
+
+		switch (action) {
+			case GLFW_PRESS: return app->onKeyDown(key, scancode, mods);
+			case GLFW_RELEASE: return app->onKeyUp(key, scancode, mods);
+			case GLFW_REPEAT: return app->onKeyRepeat(key, scancode, mods);
+		}
 	}
 
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType, uint64_t obj, size_t location, int32_t code, const char* layerPrefix, const char* msg, void* userData) {

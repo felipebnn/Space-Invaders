@@ -3,6 +3,9 @@
 #include <thread>
 
 constexpr int FRAME_RATE = 30;
+constexpr int TEXTURE_WIDTH = 32 * 4;
+constexpr int MOVE_SPEED = 64;
+constexpr int BULLET_SPEED = 128;
 
 class SpaceInvaders : public Engine {
 	size_t playerIndex;
@@ -24,6 +27,50 @@ class SpaceInvaders : public Engine {
 
 	const size_t spacing = 15;
 
+	size_t playerCurrentBullet = 0;
+	size_t enemyCurrentBullet = 0;
+	int moveDirection = 0;
+
+	void onKeyDown(int key, int scancode, int mods) {
+		switch (key) {
+			case GLFW_KEY_LEFT:
+				moveDirection = -1;
+				break;
+
+			case GLFW_KEY_RIGHT:
+				moveDirection = 1;
+				break;
+
+			case GLFW_KEY_SPACE:
+				shoot(playerIndex, playerBulletIndex, playerBulletCount, playerCurrentBullet);
+		}
+	};
+
+	void shoot(size_t shooterIndex, size_t bulletIndex, size_t bulletCount, size_t& currentBullet) {
+		const glm::vec3 pos = getModelPos(bulletIndex + currentBullet);
+
+		if (pos[1] > 95 || pos[1] < -55) { // out of bounds
+			setModelPos(bulletIndex + currentBullet, getModelPos(shooterIndex) + glm::vec3{0,0,1});
+			currentBullet = (currentBullet + 1) % bulletCount;
+		}
+	}
+
+	void onKeyUp(int key, int scancode, int mods) {
+		switch (key) {
+			case GLFW_KEY_LEFT:
+				if (moveDirection == -1) {
+					moveDirection = 0;
+				}
+				break;
+
+			case GLFW_KEY_RIGHT:
+				if (moveDirection == 1) {
+					moveDirection = 0;
+				}
+				break;
+		}
+	};
+
 	void setModelPos(size_t index, const glm::vec3& pos) {
 		Model &m = models[index];
 
@@ -44,8 +91,18 @@ class SpaceInvaders : public Engine {
 		return glm::vec3(m.modelMatrix * glm::vec4{0,0,0,1}) + m.size / 2.0f;
 	}
 
-	void tick(double duration) {
-		uint32_t sleepTime = (1000-duration) / FRAME_RATE;
+	void tick(float duration) {
+		translateModelPos(playerIndex, glm::vec3{1,0,0} * (MOVE_SPEED * moveDirection * duration));
+
+		for (uint32_t i=0; i<playerBulletCount; ++i) {
+			translateModelPos(playerBulletIndex+i, glm::vec3{0,1,0} * (BULLET_SPEED * duration));
+		}
+
+		for (uint32_t i=0; i<enemyBulletCount; ++i) {
+			translateModelPos(enemyBulletIndex+i, glm::vec3{0,-1,0} * (BULLET_SPEED * duration));
+		}
+
+		uint32_t sleepTime = 1000 * (1-duration) / FRAME_RATE;
 		std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime > 1 ? sleepTime : 1));
 
 		#ifndef NDEBUG
@@ -68,11 +125,11 @@ class SpaceInvaders : public Engine {
 		setModelPos(bossIndex, {spacing * 5, 80, 0});
 
 		for (uint32_t i=0; i<playerBulletCount; ++i) {
-			setModelPos(playerBulletIndex + i, {0, 0, 10000});
+			setModelPos(playerBulletIndex + i, {0, 100000, 1});
 		}
 
 		for (uint32_t i=0; i<enemyBulletCount; ++i) {
-			setModelPos(playerBulletIndex + i, {0, 0, 10000});
+			setModelPos(enemyBulletIndex + i, {0, -100000, 1});
 		}
 
 		for (uint32_t i=0; i<11; ++i) {
@@ -115,7 +172,7 @@ class SpaceInvaders : public Engine {
 		uint32_t height, count, textureId;
 		while (modelsFile >> modelName >> height >> textureId >> count) {
 			double textureBase = (double) textureId / textureCount;
-			double nextTextureBase = (double) (textureId + 1) / textureCount;
+			double nextTextureBase = (double) (textureId + 1) / textureCount - 1.0 / TEXTURE_WIDTH;
 
 			if (modelName == "player") {
 				playerIndex = models.size();
@@ -185,7 +242,8 @@ class SpaceInvaders : public Engine {
 
 		if (delta > 1000.0f) {
 			frameRate = (double)frames*0.5f + frameRate*0.5f;
-			std::cout << "Frame rate was " << frames << " average is " << frameRate << "\n";
+			std::cout << "\rFrame rate was " << frames << " average is " << frameRate;
+			std::cout.flush();
 
 			frames = 0;
 			previousTime = currTime;
