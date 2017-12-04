@@ -40,6 +40,9 @@ public:
 	void run();
 
 protected:
+	bool needsResize = false;
+	bool running;
+
 	GLFWwindow* window;
 
 	VkInstance instance;
@@ -158,8 +161,7 @@ protected:
 		if (width == 0 || height == 0) return;
 
 		Engine* app = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
-		app->recreateSwapChain();
-		app->updateCamera();
+		app->needsResize = true;
 	}
 
 	static void onKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
