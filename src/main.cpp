@@ -3,16 +3,22 @@
 #include <random>
 #include <thread>
 
-constexpr int FRAME_RATE = 30;
+constexpr size_t SPACING = 20;
+
+constexpr int FRAME_RATE = 60;
 constexpr float TEXTURE_WIDTH = 32 * 4;
-constexpr float PLAYER_MOVE_SPEED = 64;
-constexpr float BULLET_SPEED = 128;
 
-constexpr float MOB_MOVE_SPEED = 4;
-constexpr float MOB_ANIMATION_DURATION = 2;
+constexpr float PLAYER_MOVE_DELAY = 1.0f / 30;
+constexpr int PLAYER_MOVE_SPEED = 2;
 
-constexpr float BOSS_MOVE_SPEED = 32;
-constexpr float BOSS_ANIMATION_DURATION = 6;
+constexpr float BULLET_DELAY = 1.0f / 30;
+constexpr int BULLET_SPEED = 3;
+
+constexpr float MOB_MOVE_DELAY = 1.0f / 5;
+constexpr int MOB_ANIMATION_WIDTH = SPACING;
+
+constexpr float BOSS_MOVE_DELAY = 1.0f / 30;
+constexpr int BOSS_ANIMATION_WIDTH = SPACING * 10;
 
 constexpr float SHOOTING_PERCENTAGE_CHANCE = 0.001;
 
@@ -38,17 +44,21 @@ class SpaceInvaders : public Engine {
 	const size_t enemy2Count = 22;
 	const size_t enemy3Count = 11;
 
-	const size_t spacing = 20;
-
 	size_t playerCurrentBullet = 0;
 	size_t enemyCurrentBullet = 0;
 	int moveDirection = 0;
 
+	float playerMoveTime = 0;
+
 	AnimationState mobState = AnimationState::Right;
-	float mobStateTime = MOB_ANIMATION_DURATION / 2;
+	int mobStateCounter = MOB_ANIMATION_WIDTH / 2;
+	float mobStateTime = 0;
 
 	AnimationState bossState = AnimationState::Left;
-	float bossStateTime = BOSS_ANIMATION_DURATION / 2;
+	int bossStateCounter = BOSS_ANIMATION_WIDTH / 2;
+	float bossStateTime = 0;
+
+	float bulletTime = 0;
 
 	std::vector<size_t> mobIndices;
 
@@ -146,94 +156,96 @@ class SpaceInvaders : public Engine {
 		}
 	}
 
-	void doMobMove(float duration) {
-		glm::vec3 mobDir = ((mobState == AnimationState::Right) ? glm::vec3{1,0,0}
+	void doMobMove() {
+		glm::vec3 mobDir = (mobState == AnimationState::Right) ? glm::vec3{1,0,0}
 							: (mobState == AnimationState::Left) ? glm::vec3{-1,0,0}
-							: glm::vec3{0,-1,0}) * (MOB_MOVE_SPEED * duration);
+							: glm::vec3{0,-1,0};
 
 		for (size_t mobIndex : mobIndices) {
 			translateModelPos(mobIndex, mobDir);
 		}
 	}
 
-	void doBossMove(float duration) {
-		glm::vec3 bossDir = ((bossState == AnimationState::Right ? glm::vec3{1,0,0} : glm::vec3{-1,0,0})) * (BOSS_MOVE_SPEED * duration);
+	void doBossMove() {
+		glm::vec3 bossDir = bossState == AnimationState::Right ? glm::vec3{1,0,0} : glm::vec3{-1,0,0};
 		translateModelPos(bossIndex, bossDir);
 	}
 
 	void doPlayerAnimation(float duration) {
-		translateModelPos(playerIndex, glm::vec3{1,0,0} * (PLAYER_MOVE_SPEED * moveDirection * duration));
+		playerMoveTime -= duration;
+
+		if (playerMoveTime < 0) {
+			playerMoveTime += PLAYER_MOVE_DELAY;
+
+			translateModelPos(playerIndex, glm::vec3{1,0,0} * float(PLAYER_MOVE_SPEED * moveDirection));
+		}
 	}
 
 	void doMobAnimation(float duration) {
-		if (mobStateTime > duration) {
-			doMobMove(duration);
-		} else {
-			doMobMove(mobStateTime);
+		mobStateTime -= duration;
 
-			switch (mobState) {
-				case AnimationState::Right:
-					mobState = AnimationState::Down1;
-					doMobMove(duration - mobStateTime);
-					mobStateTime += MOB_ANIMATION_DURATION / 2;
-					break;
+		if (mobStateTime < 0) {
+			mobStateTime += MOB_MOVE_DELAY;
+			doMobMove();
 
-				case AnimationState::Left:
-					mobState = AnimationState::Down2;
-					doMobMove(duration - mobStateTime);
-					mobStateTime += MOB_ANIMATION_DURATION / 2;
-					break;
+			--mobStateCounter;
 
-				case AnimationState::Down1:
-					mobState = AnimationState::Left;
-					doMobMove(duration - mobStateTime);
-					mobStateTime += MOB_ANIMATION_DURATION;
-					break;
+			if (mobStateCounter <= 0) {
+				switch (mobState) {
+					case AnimationState::Right:
+						mobState = AnimationState::Down1;
+						mobStateCounter += MOB_ANIMATION_WIDTH / 4;
+						break;
 
-				case AnimationState::Down2:
-					mobState = AnimationState::Right;
-					doMobMove(duration - mobStateTime);
-					mobStateTime += MOB_ANIMATION_DURATION;
-					break;
+					case AnimationState::Left:
+						mobState = AnimationState::Down2;
+						mobStateCounter += MOB_ANIMATION_WIDTH / 4;
+						break;
+
+					case AnimationState::Down1:
+						mobState = AnimationState::Left;
+						mobStateCounter += MOB_ANIMATION_WIDTH;
+						break;
+
+					case AnimationState::Down2:
+						mobState = AnimationState::Right;
+						mobStateCounter += MOB_ANIMATION_WIDTH;
+						break;
+				}
 			}
 		}
-		mobStateTime -= duration;
 	}
 
 	void doBossAnimation(float duration) {
-		if (bossStateTime > duration) {
-			doBossMove(duration);
-		} else {
-			doBossMove(bossStateTime);
+		bossStateTime -= duration;
 
-			switch (bossState) {
-				case AnimationState::Right:
-					bossState = AnimationState::Left;
-					doBossMove(duration - bossStateTime);
-					bossStateTime += BOSS_ANIMATION_DURATION;
-					break;
+		if (bossStateTime < 0) {
+			bossStateTime += BOSS_MOVE_DELAY;
+			doBossMove();
 
-				case AnimationState::Left:
-					bossState = AnimationState::Right;
-					doBossMove(duration - bossStateTime);
-					bossStateTime += BOSS_ANIMATION_DURATION;
-					break;
+			--bossStateCounter;
 
-				default:
-					bossState = AnimationState::Right;
-					bossStateTime = 0;
+			if (bossStateCounter <= 0) {
+				bossStateCounter += BOSS_ANIMATION_WIDTH;
+
+				bossState = (bossState == AnimationState::Left) ? AnimationState::Right : AnimationState::Left;
 			}
 		}
-		bossStateTime -= duration;
 	}
 
 	void doBulletAnimation(float duration) {
-		for (size_t i=0; i<playerBulletCount; ++i) {
-			translateModelPos(playerBulletIndex+i, glm::vec3{0,1,0} * (BULLET_SPEED * duration));
-		}
+		bulletTime -= duration;
 
-		for (size_t i=0; i<enemyBulletCount; ++i) {
-			translateModelPos(enemyBulletIndex+i, glm::vec3{0,-1,0} * (BULLET_SPEED * duration));
+		if (bulletTime < 0) {
+			bulletTime += BULLET_DELAY;
+
+			for (size_t i=0; i<playerBulletCount; ++i) {
+				translateModelPos(playerBulletIndex+i, glm::vec3{0,1,0} * float(BULLET_SPEED));
+			}
+
+			for (size_t i=0; i<enemyBulletCount; ++i) {
+				translateModelPos(enemyBulletIndex+i, glm::vec3{0,-1,0} * float(BULLET_SPEED));
+			}
 		}
 	}
 
@@ -245,9 +257,9 @@ class SpaceInvaders : public Engine {
 	}
 
 	void doRandomShooting() {
-		std::random_device rd;
-		std::mt19937 gen(rd());
-		std::uniform_real_distribution<> dis(0.0, 1.0);
+		static std::random_device rd;
+		static std::mt19937 gen(rd());
+		static std::uniform_real_distribution<> dis(0.0, 1.0);
 
 		for (size_t mobIndex : mobIndices) {
 			if (inBounds(models[mobIndex].position) && dis(gen) < SHOOTING_PERCENTAGE_CHANCE) {
@@ -272,7 +284,7 @@ class SpaceInvaders : public Engine {
 
 	void updateCamera() {
 		UniformBufferObject ubo;
-		ubo.view = glm::lookAt(glm::vec3(spacing * 5, -10.0f, 200.0f), glm::vec3(spacing * 5, 20.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = glm::lookAt(glm::vec3(SPACING * 5, -10.0f, 200.0f), glm::vec3(SPACING * 5, 20.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 1000.0f);
 		ubo.proj[1][1] *= -1;
 		updateUniformBuffers(ubo);
@@ -281,8 +293,8 @@ class SpaceInvaders : public Engine {
 	void setup() {
 		updateCamera();
 
-		setModelPos(playerIndex, {5 * spacing, -50, 0});
-		setModelPos(bossIndex, {5 * spacing, 5 * spacing, 0});
+		setModelPos(playerIndex, {5 * SPACING, -50, 0});
+		setModelPos(bossIndex, {5 * SPACING, 5 * SPACING, 0});
 
 		for (size_t i=0; i<playerBulletCount; ++i) {
 			setModelPos(playerBulletIndex + i, {0, 0, -100000});
@@ -293,13 +305,13 @@ class SpaceInvaders : public Engine {
 		}
 
 		for (size_t i=0; i<11; ++i) {
-			setModelPos(enemy1Index+i, {i * spacing, 0, 0});
-			setModelPos(enemy1Index+11+i, {i * spacing, spacing, 0});
+			setModelPos(enemy1Index+i, {i * SPACING, 0, 0});
+			setModelPos(enemy1Index+11+i, {i * SPACING, SPACING, 0});
 
-			setModelPos(enemy2Index+i, {i * spacing, 2 * spacing, 0});
-			setModelPos(enemy2Index+11+i, {i * spacing, 3 * spacing, 0});
+			setModelPos(enemy2Index+i, {i * SPACING, 2 * SPACING, 0});
+			setModelPos(enemy2Index+11+i, {i * SPACING, 3 * SPACING, 0});
 
-			setModelPos(enemy3Index+i, {i * spacing, 4 * spacing, 0});
+			setModelPos(enemy3Index+i, {i * SPACING, 4 * SPACING, 0});
 		}
 	}
 
